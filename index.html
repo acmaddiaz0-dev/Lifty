@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Liftly AI</title>
+  <meta name="theme-color" content="#10b981">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Liftly">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+  <style>
+    body{font-family:system-ui,sans-serif}
+    .safe{padding-bottom:env(safe-area-inset-bottom)}
+    input[type=number]::-webkit-inner-spin-button{display:none}
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen">
+<div id="app" class="max-w-lg mx-auto min-h-screen flex flex-col">
+
+<header class="sticky top-0 z-40 bg-white/90 dark:bg-slate-950/90 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-2">
+    <div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-slate-950 text-sm">L</div>
+    <span class="font-bold text-lg">Liftly <span class="text-emerald-500 text-xs">AI</span></span>
+  </div>
+  <div class="flex items-center gap-2">
+    <button onclick="toggleTheme()" class="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-lg">🌓</button>
+    <div id="headerRight"></div>
+  </div>
+</header>
+
+<main id="main" class="flex-1 px-4 py-5 safe overflow-y-auto"></main>
+
+<nav id="bottomNav" class="sticky bottom-0 bg-white/95 dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-800 px-6 py-3 flex justify-around text-xs safe">
+  <button onclick="showHome()" id="navHome" class="flex flex-col items-center gap-1 text-emerald-500">🏠 Home</button>
+  <button onclick="showHistory()" id="navHistory" class="flex flex-col items-center gap-1 text-slate-400">📋 History</button>
+</nav>
+
+<!-- Rest Timer -->
+<div id="restTimer" class="hidden fixed inset-0 z-50 bg-white/95 dark:bg-slate-950/95 flex flex-col items-center justify-center p-6">
+  <div class="text-sm text-emerald-500 font-medium mb-2">REST TIMER</div>
+  <div id="timerDisplay" class="text-6xl font-bold mb-2">1:30</div>
+  <div id="timerExercise" class="text-slate-500 text-sm mb-8"></div>
+  <div class="flex gap-4 mb-8">
+    <button onclick="adjustTimer(-15)" class="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 text-xl">-15</button>
+    <button onclick="toggleTimerPause()" id="pauseBtn" class="w-20 h-20 rounded-full bg-emerald-500 text-slate-950 text-2xl font-bold">❚❚</button>
+    <button onclick="adjustTimer(15)" class="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 text-xl">+15</button>
+  </div>
+  <div class="flex gap-3 w-full max-w-xs">
+    <button onclick="finishTimer()" class="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800">Skip</button>
+    <button onclick="finishTimer()" class="flex-1 py-3 rounded-xl bg-emerald-500 text-slate-950 font-bold">Done</button>
+  </div>
+</div>
+
+<!-- Exercise Modal -->
+<div id="exerciseModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end justify-center">
+  <div class="bg-white dark:bg-slate-900 w-full max-w-lg rounded-t-2xl max-h-[80vh] flex flex-col">
+    <div class="p-4 border-b border-slate-200 dark:border-slate-800">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-lg font-bold">Add Exercise</h2>
+        <button onclick="closeExerciseModal()" class="text-2xl text-slate-400">&times;</button>
+      </div>
+      <input id="exerciseSearch" type="text" placeholder="Search..." class="w-full bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-3 text-sm" oninput="filterExercises(this.value)">
+    </div>
+    <div id="exerciseList" class="overflow-y-auto flex-1 p-2"></div>
+    <div class="p-4 border-t border-slate-200 dark:border-slate-800">
+      <button onclick="addCustomExercise()" class="w-full py-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 text-sm">+ Custom Exercise</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const EXERCISE_DB = {
+  "Chest": ["Barbell Bench Press","Incline Dumbbell Press","Dumbbell Flyes","Push-Ups"],
+  "Back": ["Barbell Row","Pull-Ups","Lat Pulldown","Deadlift"],
+  "Shoulders": ["Overhead Press","Lateral Raise","Face Pull"],
+  "Legs": ["Barbell Squat","Romanian Deadlift","Leg Press","Calf Raise","Hip Thrust"],
+  "Arms": ["Barbell Curl","Dumbbell Curl","Tricep Pushdown","Skull Crushers"],
+  "Core": ["Plank","Hanging Leg Raise","Ab Wheel"]
+};
+
+let state = {
+  view: 'home',
+  activeWorkout: null,
+  workouts: JSON.parse(localStorage.getItem('liftly_v2') || '[]'),
+  selectedWorkout: null,
+  timer: { remaining: 90, running: false, interval: null }
+};
+
+function initTheme() {
+  if (localStorage.getItem('liftly_theme') === 'light') document.documentElement.classList.remove('dark');
+  else document.documentElement.classList.add('dark');
+}
+function toggleTheme() {
+  const html = document.documentElement;
+  if (html.classList.contains('dark')) {
+    html.classList.remove('dark');
+    localStorage.setItem('liftly_theme', 'light');
+  } else {
+    html.classList.add('dark');
+    localStorage.setItem('liftly_theme', 'dark');
+  }
+}
+initTheme();
+
+function save() { localStorage.setItem('liftly_v2', JSON.stringify(state.workouts)); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
+function formatDate(iso) { return new Date(iso).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}); }
+function totalVolume(w) {
+  return w.exercises.reduce((s,ex) => s + ex.sets.reduce((a,set) => a + ((+set.weight||0)*(+set.reps||0)),0), 0);
+}
+
+function getLast(name) {
+  for (const w of state.workouts) {
+    const ex = w.exercises.find(e => e.name.toLowerCase() === name.toLowerCase());
+    if (ex && ex.sets.length) {
+      const best = [...ex.sets].sort((a,b) => (+b.weight||0) - (+a.weight||0) || (+b.reps||0) - (+a.reps||0))[0];
+      return { weight: +best.weight||0, reps: +best.reps||0 };
+    }
+  }
+  return null;
+}
+
+function getSuggestion(name) {
+  const last = getLast(name);
+  if (!last || !last.weight) return "First time. Start light and focus on form.";
+  if (last.reps >= 10) {
+    const w = Math.round(last.weight * 1.025 * 2) / 2;
+    return `Last: ${last.weight}kg × ${last.reps}. Try ${w}kg × ${Math.max(6, last.reps-2)}`;
+  }
+  if (last.reps >= 6) {
+    const w = Math.round((last.weight + 2.5) * 2) / 2;
+    return `Last: ${last.weight}kg × ${last.reps}. Aim for ${w}kg × ${last.reps}`;
+  }
+  return `Last: ${last.weight}kg × ${last.reps}. Try same weight for more reps`;
+}
+
+function render() {
+  const main = document.getElementById('main');
+  const nav = document.getElementById('bottomNav');
+  const hr = document.getElementById('headerRight');
+  document.getElementById('navHome').className = `flex flex-col items-center gap-1 ${state.view==='home'?'text-emerald-500':'text-slate-400'}`;
+  document.getElementById('navHistory').className = `flex flex-col items-center gap-1 ${state.view==='history'?'text-emerald-500':'text-slate-400'}`;
+
+  if (state.view === 'active') {
+    nav.classList.add('hidden');
+    hr.innerHTML = `<button onclick="finishWorkout()" class="text-emerald-500 font-semibold text-sm px-3 py-1 rounded-lg bg-emerald-500/10">Finish</button>`;
+    main.innerHTML = renderActive();
+  } else if (state.view === 'history') {
+    nav.classList.remove('hidden'); hr.innerHTML = '';
+    main.innerHTML = renderHistory();
+  } else if (state.view === 'detail') {
+    nav.classList.add('hidden');
+    hr.innerHTML = `<button onclick="showHistory()" class="text-slate-500 text-sm">← Back</button>`;
+    main.innerHTML = renderDetail(state.selectedWorkout);
+  } else {
+    nav.classList.remove('hidden'); hr.innerHTML = '';
+    main.innerHTML = renderHome();
+  }
+}
+
+function renderHome() {
+  const recent = state.workouts.slice(0,4);
+  const total = state.workouts.length;
+  const vol = state.workouts.reduce((s,w) => s + totalVolume(w), 0);
+  return `
+    <div class="space-y-5">
+      <div>
+        <h1 class="text-2xl font-bold">Ready to lift?</h1>
+        <p class="text-slate-500 text-sm mt-1">AI progressive overload • Rest timer</p>
+      </div>
+      ${total ? `<div class="grid grid-cols-2 gap-3">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+          <div class="text-2xl font-bold text-emerald-500">${total}</div>
+          <div class="text-xs text-slate-500">Workouts</div>
+        </div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+          <div class="text-2xl font-bold text-emerald-500">${(vol/1000).toFixed(1)}k</div>
+          <div class="text-xs text-slate-500">Total kg</div>
+        </div>
+      </div>` : ''}
+      <button onclick="startWorkout()" class="w-full bg-emerald-500 text-slate-950 font-bold py-4 rounded-2xl text-lg">+ Start Workout</button>
+      <button onclick="startAIWorkout()" class="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 py-3.5 rounded-2xl text-sm">✦ AI Quick Start (Full Body)</button>
+      ${recent.length ? `<div>
+        <h2 class="text-sm font-semibold text-slate-500 uppercase mb-3">Recent</h2>
+        ${recent.map(w => `
+          <div onclick="viewWorkout('${w.id}')" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mb-3 cursor-pointer">
+            <div class="font-semibold">${formatDate(w.date)}</div>
+            <div class="text-sm text-slate-500">${w.exercises.length} exercises • ${totalVolume(w).toLocaleString()} kg</div>
+          </div>`).join('')}
+      </div>` : `<div class="text-center py-10 text-slate-400"><div class="text-4xl mb-2">🏋️</div><p class="text-sm">No workouts yet</p></div>`}
+    </div>`;
+}
+
+function renderActive() {
+  const w = state.activeWorkout;
+  return `
+    <div class="space-y-4 pb-8">
+      <div class="text-xs text-emerald-500 font-medium uppercase">Active Session</div>
+      <div class="text-lg font-bold">${formatDate(w.date)}</div>
+      ${w.exercises.map((ex,ei) => `
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex justify-between">
+            <span class="font-semibold">${ex.name}</span>
+            <button onclick="removeExercise(${ei})" class="text-slate-400 text-xs">Remove</button>
+          </div>
+          <div class="px-4 py-2 bg-emerald-50 dark:bg-emerald-500/5 text-xs text-emerald-700 dark:text-emerald-300">
+            <span class="font-bold">AI</span> ${getSuggestion(ex.name)}
+          </div>
+          <div class="p-3 space-y-2">
+            ${ex.sets.map((set,si) => `
+              <div class="grid grid-cols-12 gap-2 items-center">
+                <div class="col-span-2 text-sm text-slate-500">${si+1}</div>
+                <div class="col-span-4">
+                  <input type="number" inputmode="decimal" step="0.5" value="${set.weight||''}" 
+                    onchange="updateSet(${ei},${si},'weight',this.value)"
+                    class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-center text-sm" placeholder="kg">
+                </div>
+                <div class="col-span-3">
+                  <input type="number" inputmode="numeric" value="${set.reps||''}"
+                    onchange="updateSet(${ei},${si},'reps',this.value)"
+                    class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-center text-sm" placeholder="reps">
+                </div>
+                <div class="col-span-3 flex justify-center">
+                  <button onclick="completeSet(${ei},${si})" class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold
+                    ${set.completed ? 'bg-emerald-500 text-slate-950' : 'bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400'}">
+                    ${set.completed ? '✓' : ''}
+                  </button>
+                </div>
+              </div>`).join('')}
+            <button onclick="addSet(${ei})" class="w-full text-sm text-emerald-500 py-2">+ Add Set</button>
+          </div>
+        </div>`).join('')}
+      <button onclick="openExerciseModal()" class="w-full border-2 border-dashed border-slate-300 dark:border-slate-700 text-slate-500 py-4 rounded-2xl">+ Add Exercise</button>
+    </div>`;
+}
+
+function renderHistory() {
+  if (!state.workouts.length) return `<div class="text-center py-16 text-slate-400"><div class="text-4xl mb-2">📋</div>No history yet</div>`;
+  return `<div class="space-y-3">
+    <h1 class="text-xl font-bold mb-4">History</h1>
+    ${state.workouts.map(w => `
+      <div onclick="viewWorkout('${w.id}')" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 cursor-pointer">
+        <div class="font-semibold">${formatDate(w.date)}</div>
+        <div class="text-sm text-slate-500">${w.exercises.map(e=>e.name).slice(0,3).join(', ')} • ${totalVolume(w).toLocaleString()} kg</div>
+      </div>`).join('')}
+  </div>`;
+}
+
+function renderDetail(w) {
+  return `<div class="space-y-4">
+    <h1 class="text-xl font-bold">${formatDate(w.date)}</h1>
+    <div class="text-sm text-slate-500">${totalVolume(w).toLocaleString()} kg total</div>
+    ${w.exercises.map(ex => `
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+        <div class="font-semibold mb-2">${ex.name}</div>
+        ${ex.sets.map((s,i) => `<div class="flex justify-between text-sm"><span class="text-slate-500">Set ${i+1}</span><span>${s.weight||0} kg × ${s.reps||0}</span></div>`).join('')}
+      </div>`).join('')}
+    <button onclick="deleteWorkout('${w.id}')" class="w-full text-red-500 text-sm py-3">Delete Workout</button>
+  </div>`;
+}
+
+function openExerciseModal() {
+  document.getElementById('exerciseModal').classList.remove('hidden');
+  document.getElementById('exerciseSearch').value = '';
+  filterExercises('');
+}
+function closeExerciseModal() { document.getElementById('exerciseModal').classList.add('hidden'); }
+
+function filterExercises(q) {
+  q = q.toLowerCase();
+  let html = '';
+  for (const [group, list] of Object.entries(EXERCISE_DB)) {
+    const filtered = list.filter(e => e.toLowerCase().includes(q));
+    if (!filtered.length) continue;
+    html += `<div class="px-3 pt-3 pb-1 text-xs font-semibold text-slate-400 uppercase">${group}</div>`;
+    filtered.forEach(name => {
+      html += `<button onclick="addExercise('${name.replace(/'/g,"\\'")}')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-sm">${name}</button>`;
+    });
+  }
+  document.getElementById('exerciseList').innerHTML = html || `<div class="p-6 text-center text-slate-400 text-sm">No exercises found</div>`;
+}
+
+function addExercise(name) {
+  const last = getLast(name);
+  const w = last ? last.weight : '';
+  const r = last ? last.reps : '';
+  state.activeWorkout.exercises.push({
+    name,
+    sets: [{weight:w,reps:r,completed:false},{weight:w,reps:r,completed:false},{weight:w,reps:r,completed:false}]
+  });
+  closeExerciseModal();
+  render();
+}
+function addCustomExercise() {
+  const name = prompt('Exercise name:');
+  if (name && name.trim()) addExercise(name.trim());
+}
+
+function startRestTimer(name) {
+  if (state.timer.interval) clearInterval(state.timer.interval);
+  state.timer.remaining = 90;
+  state.timer.running = true;
+  document.getElementById('restTimer').classList.remove('hidden');
+  document.getElementById('timerExercise').textContent = name;
+  document.getElementById('pauseBtn').textContent = '❚❚';
+  updateTimer();
+  state.timer.interval = setInterval(() => {
+    if (!state.timer.running) return;
+    state.timer.remaining--;
+    updateTimer();
+    if (state.timer.remaining <= 0) {
+      clearInterval(state.timer.interval);
+      state.timer.running = false;
+      if (navigator.vibrate) navigator.vibrate([200,100,200]);
+      document.getElementById('timerDisplay').textContent = 'Done!';
+    }
+  }, 1000);
+}
+function updateTimer() {
+  const m = Math.floor(state.timer.remaining/60);
+  const s = state.timer.remaining % 60;
+  document.getElementById('timerDisplay').textContent = state.timer.remaining <= 0 ? 'Done!' : `${m}:${s.toString().padStart(2,'0')}`;
+}
+function adjustTimer(sec) { state.timer.remaining = Math.max(0, state.timer.remaining + sec); updateTimer(); }
+function toggleTimerPause() {
+  state.timer.running = !state.timer.running;
+  document.getElementById('pauseBtn').textContent = state.timer.running ? '❚❚' : '▶';
+}
+function finishTimer() {
+  if (state.timer.interval) clearInterval(state.timer.interval);
+  state.timer.running = false;
+  document.getElementById('restTimer').classList.add('hidden');
+}
+
+function showHome() { state.view = 'home'; render(); }
+function showHistory() { state.view = 'history'; render(); }
+function startWorkout() {
+  state.activeWorkout = { id: uid(), date: new Date().toISOString(), exercises: [] };
+  state.view = 'active'; render();
+}
+function startAIWorkout() {
+  const names = ["Barbell Squat","Barbell Bench Press","Barbell Row","Overhead Press","Romanian Deadlift"];
+  state.activeWorkout = {
+    id: uid(), date: new Date().toISOString(),
+    exercises: names.map(n => {
+      const last = getLast(n);
+      const w = last ? last.weight : '', r = last ? last.reps : 8;
+      return { name: n, sets: [{weight:w,reps:r,completed:false},{weight:w,reps:r,completed:false},{weight:w,reps:r,completed:false}] };
+    })
+  };
+  state.view = 'active'; render();
+}
+function addSet(ei) {
+  const sets = state.activeWorkout.exercises[ei].sets;
+  const last = sets[sets.length-1];
+  sets.push({ weight: last?.weight||'', reps: last?.reps||'', completed: false });
+  render();
+}
+function updateSet(ei,si,field,val) {
+  state.activeWorkout.exercises[ei].sets[si][field] = val === '' ? '' : +val;
+}
+function completeSet(ei,si) {
+  const set = state.activeWorkout.exercises[ei].sets[si];
+  set.completed = !set.completed;
+  render();
+  if (set.completed) startRestTimer(state.activeWorkout.exercises[ei].name);
+}
+function removeExercise(ei) {
+  if (confirm('Remove exercise?')) {
+    state.activeWorkout.exercises.splice(ei,1);
+    render();
+  }
+}
+function finishWorkout() {
+  if (!state.activeWorkout.exercises.length) {
+    if (confirm('Discard empty workout?')) { state.activeWorkout = null; state.view = 'home'; render(); }
+    return;
+  }
+  state.activeWorkout.exercises.forEach(ex => {
+    ex.sets = ex.sets.filter(s => s.weight || s.reps || s.completed);
+    if (!ex.sets.length) ex.sets.push({weight:0,reps:0,completed:true});
+  });
+  state.workouts.unshift(state.activeWorkout);
+  save();
+  state.activeWorkout = null;
+  state.view = 'home';
+  render();
+}
+function viewWorkout(id) {
+  state.selectedWorkout = state.workouts.find(w => w.id === id);
+  state.view = 'detail'; render();
+}
+function deleteWorkout(id) {
+  if (!confirm('Delete workout?')) return;
+  state.workouts = state.workouts.filter(w => w.id !== id);
+  save();
+  state.view = 'history'; render();
+}
+
+render();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
